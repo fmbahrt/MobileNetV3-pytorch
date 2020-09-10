@@ -9,7 +9,7 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 
-from layers import Config, MobileNetV3
+from model import Config, MobileNetV3
 
 # Load the model
 model = MobileNetV3(Config.large)
