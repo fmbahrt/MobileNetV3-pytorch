@@ -12,7 +12,7 @@ import torchvision.transforms as transforms
 from model import Config, MobileNetV3
 
 # Load the model
-model = MobileNetV3(Config.large)
+model = MobileNetV3(Config.small)
 
 # some data fun
 transform = transforms.Compose(

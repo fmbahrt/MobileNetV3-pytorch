@@ -101,23 +101,45 @@ class Config():
     # kernel_size, exp_size, out_channels, se, swish, stride
 
     # Ref: table 1 MobileNetV3 paper
-    large = [
-        [3, 16, 16, False, False, 1],
-        [3, 64, 24, False, False, 2],
-        [3, 72, 24, False, False, 1],
-        [5, 72, 40, True, False, 2],
-        [5, 120, 40, True, False, 1],
-        [5, 120, 40, True, False, 1],
-        [3, 240, 80, False, True, 2],
-        [3, 200, 80, False, True, 1],
-        [3, 184, 80, False, True, 1],
-        [3, 184, 80, False, True, 1],
-        [3, 480, 112, True, True, 1],
-        [3, 672, 112, True, True, 1],
-        [5, 672, 160, True, True, 2],
-        [5, 960, 160, True, True, 1],
-        [5, 960, 160, True, True, 1],
-    ]
+    large = {
+        'blocks': [
+            [3, 16, 16, False, False, 1],
+            [3, 64, 24, False, False, 2],
+            [3, 72, 24, False, False, 1],
+            [5, 72, 40, True, False, 2],
+            [5, 120, 40, True, False, 1],
+            [5, 120, 40, True, False, 1],
+            [3, 240, 80, False, True, 2],
+            [3, 200, 80, False, True, 1],
+            [3, 184, 80, False, True, 1],
+            [3, 184, 80, False, True, 1],
+            [3, 480, 112, True, True, 1],
+            [3, 672, 112, True, True, 1],
+            [5, 672, 160, True, True, 2],
+            [5, 960, 160, True, True, 1],
+            [5, 960, 160, True, True, 1],
+        ],
+        'out_width': 960,
+        'classification_width': 1280
+    }
+
+    small = {
+        'blocks': [
+            [3, 16, 16, True, False, 2],
+            [3, 72, 24, False, False, 2],
+            [3, 88, 24, False, False, 1],
+            [5, 96, 40, True, True, 2],
+            [5, 240, 40, True, True, 1],
+            [5, 240, 40, True, True, 1],
+            [5, 120, 48, True, True, 1],
+            [5, 144, 48, True, True, 1],
+            [5, 288, 96, True, True, 2],
+            [5, 576, 96, True, True, 1],
+            [5, 576, 96, True, True, 1],
+        ],
+        'out_width': 576,
+        'classification_width': 1024
+    }
 
 class MobileNetV3(nn.Module):
 
@@ -142,7 +164,7 @@ class MobileNetV3(nn.Module):
         layers = []
         inp = 16
         e_size = 0
-        for k_size, e_size, oup, se, swish, stride in cfg:
+        for k_size, e_size, oup, se, swish, stride in cfg['blocks']:
             block = InvertedResidualBlock(
                 inp=inp,
                 hiddendim=e_size,
@@ -156,10 +178,10 @@ class MobileNetV3(nn.Module):
             layers.append(block)
         self.trunk = nn.Sequential(*layers)
 
-        # Classificatio
-        c_exp_conv = nn.Conv2d(inp, 960, kernel_size=1, stride=1,
+        # Classification
+        c_exp_conv = nn.Conv2d(inp, cfg['out_width'], kernel_size=1, stride=1,
                                padding=0, bias=False)
-        c_exp_bn   = nn.BatchNorm2d(960)
+        c_exp_bn   = nn.BatchNorm2d(cfg['out_width'])
         c_exp_act  = nn.Hardswish()
 
         avg_pool = nn.AdaptiveAvgPool2d((1, 1))
@@ -171,30 +193,35 @@ class MobileNetV3(nn.Module):
             avg_pool
         )
 
+        c_conv1 = nn.Conv2d(cfg['out_width'], cfg['classification_width'], kernel_size=1, stride=1,
+                            padding=0, bias=False)
+        c_conv2 = nn.Conv2d(cfg['classification_width'], num_classes, kernel_size=1, stride=1,
+                            padding=0, bias=False)
+
         self.classifier = nn.Sequential(
-            nn.Linear(960, 1280),
+            c_conv1,
             nn.Hardswish(),
-            nn.Dropout(0.2),
-            nn.Linear(1280, num_classes)
+            c_conv2
         )
 
     def forward(self, x):
         x = self.stem(x)
         x = self.trunk(x)
         x = self.exp_pooling(x)
-        x = self.classifier(x.view(x.size(0), -1))
+        x = self.classifier(x)
 
-        return x
+        return torch.squeeze(x)
 
 if __name__ == '__main__':
     import time
-    x = torch.randn(32, 3, 224, 224)
+    inz = torch.randn(32, 3, 224, 224)
 
-    model = MobileNetV3()
+    model = MobileNetV3(cfg=Config.large)
 
     start = time.time()
-    x = model(x)
-    print(x.shape)
+    for i in range(10):
+        x = model(inz)
+        print(x.shape)
     end = time.time() - start
 
     print(end)

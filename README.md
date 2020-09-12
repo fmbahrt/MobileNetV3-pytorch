@@ -3,7 +3,6 @@
 Just some code i wrote while reading the MobileNet papers. :^)
 
 ## What is missing?
-* MobileNetV3-small
 * Width multiplier
 * Probably some other stuff as well...
 
