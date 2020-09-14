@@ -1,6 +1,19 @@
 import torch
 import torch.nn as nn
 
+# Utility function for width multiplication
+def _make_divisible(v, divisor, min_value=None):
+    """
+    https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet/mobilenet.py
+    """
+    if min_value is None:
+        min_value = divisor
+    new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
+    # Make sure that round down does not go down by more than 10%.
+    if new_v < 0.9 * v:
+        new_v += divisor
+    return new_v
+
 class SEBlock(nn.Module):
 
     """Sweeet squeeze and excitation module!"""
@@ -80,10 +93,10 @@ class InvertedResidualBlock(nn.Module):
         # Depthwise Conv
         x = self._depth(x)
         x = self._bn_depth(x)
+        x = self._act_depth(x)
 
         # SE
         x = self._squeeze(x)
-        x = self._act_depth(x) # activate after SE?
 
         # Project
         x = self._proj(x)
@@ -143,15 +156,20 @@ class Config():
 
 class MobileNetV3(nn.Module):
 
-    def __init__(self, cfg=None, num_classes=10):
+    def __init__(self, cfg=None, num_classes=10, alpha=1.):
         super(MobileNetV3, self).__init__()
 
         if cfg is None:
             cfg = Config.large
 
         # Stem
-        self.stem_conv = nn.Conv2d(3, 16, kernel_size=1, stride=1, padding=1, bias=False)
-        self.stem_bn   = nn.BatchNorm2d(16)
+        first_out_dim = _make_divisible(16 * alpha, 8)
+        self.stem_conv = nn.Conv2d(3, first_out_dim,
+                                   kernel_size=1,
+                                   stride=1,
+                                   padding=1,
+                                   bias=False)
+        self.stem_bn   = nn.BatchNorm2d(first_out_dim)
         self.stem_act  = nn.ReLU()
 
         self.stem = nn.Sequential(
@@ -162,12 +180,17 @@ class MobileNetV3(nn.Module):
 
         # Trunk
         layers = []
-        inp = 16
+        inp = first_out_dim
         e_size = 0
         for k_size, e_size, oup, se, swish, stride in cfg['blocks']:
+
+            # Account for width multiplier
+            oup = _make_divisible(oup * alpha, 8)
+            exp_size = _make_divisible(e_size * alpha, 8)
+
             block = InvertedResidualBlock(
                 inp=inp,
-                hiddendim=e_size,
+                hiddendim=exp_size,
                 oup=oup,
                 kernel_size=k_size,
                 stride=stride,
@@ -216,7 +239,7 @@ if __name__ == '__main__':
     import time
     inz = torch.randn(32, 3, 224, 224)
 
-    model = MobileNetV3(cfg=Config.large)
+    model = MobileNetV3(cfg=Config.small, alpha=0.5)
 
     start = time.time()
     for i in range(10):
